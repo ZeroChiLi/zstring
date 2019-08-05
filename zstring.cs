@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 /*
  使用方式：
@@ -26,7 +26,7 @@ using System.Collections.Generic;
 
     5.0GC。时间消耗上，短字符串处理，zstring比gstring时间少20%~30%，比原生慢。大字符串处理，zstring比gstring时间少70%~80%，接近原生string速度。
  */
-namespace GameFramework
+namespace Common
 {
     struct Byte8192
     {
@@ -94,6 +94,7 @@ namespace GameFramework
         static Stack<zstring_block> g_blocks;//gstring_block缓存栈
         static Stack<zstring_block> g_open_blocks;//gstring已经打开的缓存栈      
         static Dictionary<int, string> g_intern_table;//字符串intern表
+        static Dictionary<int, string> g_intern_variant_table;//字符串自定义intern表
         public static zstring_block g_current_block;//gstring所在的block块
         static List<int> g_finds;//字符串replace功能记录子串位置
         static zstring[] g_format_args;//存储格式化字符串值
@@ -291,7 +292,7 @@ namespace GameFramework
 
             //新字符串长度
             int new_len = input.Length;
-            for (int i = -3;;)
+            for (int i = -3; ;)
             {
                 i = internal_index_of(input, '{', i + 3);
                 if (i == -1)
@@ -322,7 +323,7 @@ namespace GameFramework
                 if (brace_idx == -1)
                     throw new InvalidOperationException("没有发现大括号{ for argument " + arg);
                 if (brace_idx + 2 >= input.Length || input[brace_idx + 2] != '}')
-                    throw new InvalidOperationException("没有发现大括号} for argument " + arg);              
+                    throw new InvalidOperationException("没有发现大括号} for argument " + arg);
 
                 fixed (char* ptr_input = input)
                 {
@@ -334,7 +335,7 @@ namespace GameFramework
                             {
                                 ptr_result[i++] = ptr_input[j++];
                                 ++next_output_idx;
-                            }                
+                            }
                             else
                             {
                                 ptr_result[i++] = arg[k++];
@@ -350,7 +351,7 @@ namespace GameFramework
                 }
             }
             next_input_idx += 3;
-            for (int i = next_output_idx, j =0; i < new_len; i++,j++)
+            for (int i = next_output_idx, j = 0; i < new_len; i++, j++)
             {
                 fixed (char* ptr_input = input)
                 {
@@ -372,7 +373,7 @@ namespace GameFramework
 
             if (start + count > input.Length)
                 return -1;
-                // throw new ArgumentOutOfRangeException("count=" + count + " start+count=" + start + count);
+            // throw new ArgumentOutOfRangeException("count=" + count + " start+count=" + start + count);
 
             fixed (char* ptr_this = input)
             {
@@ -750,7 +751,7 @@ namespace GameFramework
                 src += 2048;
                 byteCount -= 2048;
             }
-        g1024: if (byteCount >= 1024)
+            g1024: if (byteCount >= 1024)
             {
                 ((Byte1024*)dest)[0] = ((Byte1024*)src)[0];
                 dest += 1024;
@@ -778,7 +779,7 @@ namespace GameFramework
                 src += 128;
                 byteCount -= 128;
             }
-        g64: if (byteCount >= 64)
+            g64: if (byteCount >= 64)
             {
                 ((Byte64*)dest)[0] = ((Byte64*)src)[0];
                 dest += 64;
@@ -943,6 +944,7 @@ namespace GameFramework
             g_secCache = new Dictionary<int, Stack<zstring>>(cache_capacity);
             g_blocks = new Stack<zstring_block>(block_capacity);
             g_intern_table = new Dictionary<int, string>(intern_capacity);
+            g_intern_variant_table = new Dictionary<int, string>(intern_capacity);
             g_open_blocks = new Stack<zstring_block>(open_capacity);
             g_shallowCache = new Stack<zstring>(shallowCache_capacity);
             for (int c = 0; c < cache_capacity; c++)
@@ -994,6 +996,40 @@ namespace GameFramework
             for (int i = 0; i < values.Length; i++)
                 __intern(values[i]);
         }
+
+        //添加string到自定义intern表中 
+        public string InternVariant()
+        {
+            return InternVariant(_value);
+        }
+
+        //添加string到自定义intern表中 
+        public static string InternVariant(string value)
+        {
+            int hash = value.GetHashCode();
+            if (g_intern_variant_table.ContainsKey(hash))
+            {
+                return g_intern_variant_table[hash];
+            }
+            else
+            {
+                string interned = new string(NEW_ALLOC_CHAR, value.Length);
+                memcpy(interned, value);
+                g_intern_variant_table.Add(hash, interned);
+                return interned;
+            }
+        }
+
+        //移除intern表中string 
+        public static void RemoveInternVariant(string value)
+        {
+            int hash = value.GetHashCode();
+            if (g_intern_variant_table.ContainsKey(hash))
+            {
+                g_intern_variant_table.Remove(hash);
+            }
+        }
+
         //下标取值函数
         public char this[int i]
         {
